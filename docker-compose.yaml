@@ -1,0 +1,68 @@
+services:
+  mongo:
+    container_name: mongo
+    build:
+      context: .
+      args:
+        MONGO_VERSION: ${MONGO__VERSION:?}
+    volumes:
+      - mongo_data:/data/db:rw
+      - ./scripts/start.sh:/scripts/start.sh:ro
+    command: bash /scripts/start.sh
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO__USERNAME:?}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO__PASSWORD:?}
+      MONGO_INITDB_DATABASE: ${MONGO__DATABASE:?}
+      KEEP_DATA: ${MONGO__KEEP_DATA:-false}
+      REPLICA_COUNT: ${MONGO__REPLICA_COUNT:-1}
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    ports:
+      - ${MONGO__PORT:?}:27017
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4G
+        reservations:
+          cpus: "2"
+          memory: 2G
+    restart: unless-stopped
+
+  backup:
+    image: mongo:5
+    container_name: backup
+    environment:
+      BACKUP_URI: ${MONGO__BACKUP_URI:?}
+      RESTORE_URI: ${MONGO__CONNECTION_STRING:?}
+      INCLUDE_COLLECTIONS: ${MONGO__INCLUDE_COLLECTIONS}
+      EXCLUDE_COLLECTIONS: ${MONGO__EXCLUDE_COLLECTIONS}
+      PARALLEL_COLLECTIONS: ${MONGO__PARALLEL_COLLECTIONS:-8}
+      INSERTION_WORKERS: ${MONGO__INSERTION_WORKERS:-4}
+    restart: on-failure
+    volumes:
+      - ./scripts/backup.sh:/scripts/backup.sh:ro
+      - ./data/mongo/backup:/backup:rw
+    command: bash /scripts/backup.sh
+    depends_on:
+      mongo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "1"
+          memory: 1G
+    networks:
+      - backup
+
+volumes:
+  mongo_data:
+
+networks:
+  backup:
